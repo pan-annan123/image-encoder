@@ -14,22 +14,24 @@ import javax.swing.JPanel;
 
 public class Lightbeam extends JPanel {
 
-	private BufferedImage canvas;
+	private BufferedImage encoded;
 
 	private static String root = "";
 	private static int prefix = 8, buffer = 4;
 
 	public Lightbeam() {
-		File file = new File(root+"input");
+		
+	}
+	
+	public Lightbeam(File file) {
 		if (!file.exists()) {
-			System.out.println("MUST HAVE VALID ROOT AND INPUT FILE");
-			return;
+			throw new IllegalArgumentException("Invalid file path");
 		}
-		long l = file.length()+prefix;
-		long p = l % buffer == 0? l/buffer : l/buffer+1;
-		int w = (int) Math.sqrt(p) +1;
+		long length = file.length()+prefix;
+		long pixels = length % buffer == 0? length/buffer : length/buffer+1;
+		int width = (int) Math.sqrt(pixels) +1;
 
-		canvas = new BufferedImage(w, w, BufferedImage.TYPE_INT_ARGB);
+		encoded = new BufferedImage(width, width, BufferedImage.TYPE_INT_ARGB);
 
 		read(file, new Consumer() {
 
@@ -37,16 +39,16 @@ public class Lightbeam extends JPanel {
 
 			@Override
 			public void write(int hex) {
-				canvas.setRGB(x, y, hex);
+				encoded.setRGB(x, y, hex);
 				x++;
-				if (x >= canvas.getWidth()) {
+				if (x >= encoded.getWidth()) {
 					y++;
 					x=0;
 				}
 			}
 		});
 
-		write(canvas);
+		write(encoded);
 
 		try {
 			BufferedImage im = ImageIO.read(new File(root+"output.png"));
@@ -54,6 +56,10 @@ public class Lightbeam extends JPanel {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+	
+	public static Lightbeam of(File file) {
+		return new Lightbeam(file);
 	}
 
 	interface Consumer {
@@ -145,7 +151,7 @@ public class Lightbeam extends JPanel {
 	@Override
 	public Dimension getPreferredSize() {
 		try {
-			return new Dimension(canvas.getWidth(), canvas.getHeight());
+			return new Dimension(encoded.getWidth(), encoded.getHeight());
 		} catch (NullPointerException e) {
 			return new Dimension(0,0);
 		}
@@ -155,6 +161,6 @@ public class Lightbeam extends JPanel {
 	public void paintComponent(Graphics graphics) {
 		super.paintComponent(graphics);
 		Graphics2D g = (Graphics2D) graphics;
-		g.drawImage(canvas,0,0,this);
+		g.drawImage(encoded,0,0,this);
 	}
 }
