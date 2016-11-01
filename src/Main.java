@@ -11,7 +11,7 @@ public class Main extends JFrame {
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		setLayout(new BorderLayout());
 
-		JPanel world = new World();
+		JPanel world = new Lightbeam();
 		add(world);
 
 		pack();

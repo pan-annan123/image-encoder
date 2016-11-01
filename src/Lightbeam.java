@@ -12,14 +12,14 @@ import java.io.IOException;
 import javax.imageio.ImageIO;
 import javax.swing.JPanel;
 
-public class World extends JPanel {
+public class Lightbeam extends JPanel {
 
 	private BufferedImage canvas;
 
 	private static String root = "";
 	private static int prefix = 8, buffer = 4;
 
-	public World() {
+	public Lightbeam() {
 		File file = new File(root+"input");
 		if (!file.exists()) {
 			System.out.println("MUST HAVE VALID ROOT AND INPUT FILE");
@@ -106,7 +106,7 @@ public class World extends JPanel {
 	public void read(File file, Consumer consumer) {
 		FileInputStream fileInputStream = null;
 
-		byte[] buffer = new byte[World.buffer];
+		byte[] buffer = new byte[Lightbeam.buffer];
 
 		try {
 			fileInputStream = new FileInputStream(file);
@@ -124,7 +124,7 @@ public class World extends JPanel {
 				int hex = (0xff & buffer[0]) << 24 | (0xff & buffer[1]) << 16 | (0xff & buffer[2]) << 8 | (0xff & buffer[3]);
 //				 System.out.println(String.format("[0]: %1$d, [1]: %2$d, [2]: %3$d, [3]: %4$d", buffer[0],buffer[1], buffer[2], buffer[3]));
 				consumer.write(hex);
-				buffer = new byte[World.buffer];
+				buffer = new byte[Lightbeam.buffer];
 			}
 			fileInputStream.close();
 		}catch(Exception e){
