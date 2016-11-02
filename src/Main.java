@@ -6,6 +6,8 @@ import javax.swing.JPanel;
 
 public class Main extends JFrame {
 
+	private static final long serialVersionUID = 1L;
+
 	public Main() {
 		super("New Window");
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);

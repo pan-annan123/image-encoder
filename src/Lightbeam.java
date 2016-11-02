@@ -1,166 +1,175 @@
-import java.awt.Dimension;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
-import java.awt.image.RenderedImage;
+import java.awt.image.DataBufferInt;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.function.Consumer;
 
 import javax.imageio.ImageIO;
-import javax.swing.JPanel;
 
-public class Lightbeam extends JPanel {
+public class Lightbeam {
 
 	private BufferedImage encoded;
 
-	private static String root = "";
-	private static int prefix = 8, buffer = 4;
+	private static final int prefix = 8, buf = 4;
+	private static final boolean debug = false;
 
-	public Lightbeam() {
-		
-	}
-	
+	private File file;
+
 	public Lightbeam(File file) {
 		if (!file.exists()) {
 			throw new IllegalArgumentException("Invalid file path");
 		}
-		long length = file.length()+prefix;
-		long pixels = length % buffer == 0? length/buffer : length/buffer+1;
-		int width = (int) Math.sqrt(pixels) +1;
+		this.file = file;
+		
+		//Find a square able to fit the bytes from the file
+		long length = prefix + file.length();
+		long pixels = length % buf == 0 ? length/buf : length/buf+1;
+		int width = (int) Math.sqrt(pixels) + 1;
 
+		//Create a new image
 		encoded = new BufferedImage(width, width, BufferedImage.TYPE_INT_ARGB);
-
-		read(file, new Consumer() {
-
-			int x=0,y=0;
-
-			@Override
-			public void write(int hex) {
-				encoded.setRGB(x, y, hex);
-				x++;
-				if (x >= encoded.getWidth()) {
-					y++;
-					x=0;
-				}
-			}
-		});
-
-		write(encoded);
-
-		try {
-			BufferedImage im = ImageIO.read(new File(root+"output.png"));
-			decode(im);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
 	}
 	
 	public static Lightbeam of(File file) {
 		return new Lightbeam(file);
 	}
-
-	interface Consumer {
-		public void write(int hex);
+	
+	public Lightbeam encode() {
+		//track pixel writing
+		int i = 0;
+		int[] pixels = ((DataBufferInt) encoded.getRaster().getDataBuffer()).getData();
+		
+		//Prepare an input stream
+		FileInputStream fis = null;
+		byte[] buffer = new byte[buf];
+	
+		try {
+			fis = new FileInputStream(file);
+	
+			//Obtain length information
+			long length = file.length();
+			int part1 = (int) (length >> 32);
+			int part2 = (int) length;
+			
+			//Print original length and data from parts
+			if (debug) {
+				System.out.println("Original: "+length);
+				System.out.println(part1);
+				System.out.println(part2);
+				System.out.println("===");
+			}
+			
+			//Write length information to image
+			pixels[i++] = part1;
+			pixels[i++] = part2;
+			
+			//Read file and encode to image
+			while ((fis.read(buffer)) > 0) {
+				int hex = (0xff & buffer[0]) << 24 | (0xff & buffer[1]) << 16 | (0xff & buffer[2]) << 8 | (0xff & buffer[3]);
+				pixels[i++] = hex;
+				buffer = new byte[buf];
+			}
+			
+			//Close the stream
+			fis.close();
+			
+		} catch(IOException e) {
+			e.printStackTrace();
+		}
+		
+		return this;
+	}
+	
+	public BufferedImage getImage() {
+		return encoded;
+	}
+	
+	public Lightbeam peekImage(Consumer<BufferedImage> action) {
+		action.accept(encoded);
+		return this;
+	}
+	
+	/**
+	 * 
+	 * @param output - filename (including extension)
+	 */
+	public void writeToImage(String output) {
+		try {
+			//Write image to file
+			File imagefile = new File(file.getParentFile(), output);
+			ImageIO.write(encoded, "png", imagefile);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
-	private void decode(BufferedImage image) throws IOException {
-		final byte[] pixels = ((DataBufferByte) image.getRaster().getDataBuffer()).getData();
+	/**
+	 * 
+	 * @param output - filename (including extension)
+	 */
+	public void decode(String output) throws IOException {
+		BufferedImage image = ImageIO.read(file);
+		
+		//Obtain image pixels in bytes
+		final byte[] pixels;
+		try {
+			pixels = ((DataBufferByte) image.getRaster().getDataBuffer()).getData();
+		} catch (NullPointerException e) {
+			throw new IllegalArgumentException("Lightbeam file is not an image");
+		}
+		
+		//Prepare output stream
+		FileOutputStream fos = new FileOutputStream(new File(this.file.getParentFile(), output));
+		byte[] buffer = new byte[buf];
 
-		FileOutputStream fos = new FileOutputStream(root+"generated");
-
-		final int pixelLength = buffer;
-
-		int len = 0;
-		len += (((int) pixels[0] & 0xff) << 24); // alpha
-		len += ((int) pixels[1] & 0xff); // blue
-		len += (((int) pixels[2] & 0xff) << 8); // green
-		len += (((int) pixels[3] & 0xff) << 16); // red
-		int len2 = 0;
-		len2 += (((int) pixels[4] & 0xff) << 24); // alpha
-		len2 += ((int) pixels[5] & 0xff); // blue
-		len2 += (((int) pixels[6] & 0xff) << 8); // green
-		len2 += (((int) pixels[7] & 0xff) << 16); // red
-		System.out.println(len);
-		System.out.println(len2);
-		System.out.println("===");
-
+		//Read first 2 pixels to establish file length
+		int len = getPixel(pixels, 0);
+		int len2 = getPixel(pixels, 4);
 		long length = (long) len << 32 | len2 & 0xFFFFFFFFL;
-		int mod = (int) (length % buffer);
-		System.out.println("TOTAL PIXELS "+pixels.length);
-		System.out.println("LENGTH "+length);
-		System.out.println("MOD "+mod);
-		for (int pixel = prefix; pixel < prefix+length; pixel += pixelLength) {
-			byte[] buffer = new byte[pixelLength];
+		
+		//Calculate mod 4 to establish the pixels with partially written information
+		int mod = (int) (length % buf);
+		
+		//Print decoding results
+		if (debug) {
+			System.out.println(len);
+			System.out.println(len2);
+			System.out.println("===");
+			System.out.println("TOTAL PIXELS "+pixels.length);
+			System.out.println("LENGTH "+length);
+			System.out.println("MOD "+mod);
+		}
+		
+		//from [prefix, prefix+length[, increment by pixel
+		for (int pixel = prefix; pixel < prefix+length; pixel += buf) {
 			buffer[0] = (byte) (pixels[pixel] & 0xff); // alpha
 			buffer[3] = (byte) (pixels[pixel + 1] & 0xff); // blue
 			buffer[2] = (byte) (pixels[pixel + 2] & 0xff); // green
 			buffer[1] = (byte) (pixels[pixel + 3] & 0xff); // red
-			if (pixel + pixelLength >= prefix+length) {
+			
+			//If the next pixel is not part of the file
+			if (pixel + buf > prefix+length) {
 				fos.write(buffer, 0, mod);
 			} else {
 				fos.write(buffer);
 			}
 		}
 
+		//finalize and close stream
 		fos.flush();
 		fos.close();
 	}
-
-	public void read(File file, Consumer consumer) {
-		FileInputStream fileInputStream = null;
-
-		byte[] buffer = new byte[Lightbeam.buffer];
-
-		try {
-			fileInputStream = new FileInputStream(file);
-
-			long ab = file.length();
-			System.out.println("LENGTH "+ab);
-			int c = (int) (ab >> 32);
-			int d = (int) ab;
-			System.out.println(c);
-			System.out.println(d);
-			System.out.println("===");
-			consumer.write(c);
-			consumer.write(d);
-			while ((fileInputStream.read(buffer)) > 0) {
-				int hex = (0xff & buffer[0]) << 24 | (0xff & buffer[1]) << 16 | (0xff & buffer[2]) << 8 | (0xff & buffer[3]);
-//				 System.out.println(String.format("[0]: %1$d, [1]: %2$d, [2]: %3$d, [3]: %4$d", buffer[0],buffer[1], buffer[2], buffer[3]));
-				consumer.write(hex);
-				buffer = new byte[Lightbeam.buffer];
-			}
-			fileInputStream.close();
-		}catch(Exception e){
-			e.printStackTrace();
-		}
-		//		System.out.println("===================");
+	
+	private int getPixel(byte[] pixels, int start) {
+		int pixel = 0;
+		pixel += ((pixels[start  ] & 0xff) << 24); // alpha
+		pixel += ((pixels[start+3] & 0xff) << 16); // red
+		pixel += ((pixels[start+2] & 0xff) << 8); // green
+		pixel +=  (pixels[start+1] & 0xff); // blue
+		return pixel;
 	}
-
-	public void write(RenderedImage im) {
-		try {
-			File file = new File(root+"output.png");
-			ImageIO.write(im, "png", file);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-	}
-
-	@Override
-	public Dimension getPreferredSize() {
-		try {
-			return new Dimension(encoded.getWidth(), encoded.getHeight());
-		} catch (NullPointerException e) {
-			return new Dimension(0,0);
-		}
-	}
-
-	@Override
-	public void paintComponent(Graphics graphics) {
-		super.paintComponent(graphics);
-		Graphics2D g = (Graphics2D) graphics;
-		g.drawImage(encoded,0,0,this);
-	}
+	
 }
